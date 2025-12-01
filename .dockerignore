@@ -24,9 +24,15 @@ env/
 .gitattributes
 
 # Documentation
-*.md
+# Note: README.md is required by pyproject.toml for hatchling build
+# *.md
 docs/
-README*.md
+# README.md - Keep this for build (required by pyproject.toml)
+README_*.md
+QUICKSTART*.md
+SERVERLESS*.md
+SETUP*.md
+RUNPOD*.md
 
 # Tests
 tests/

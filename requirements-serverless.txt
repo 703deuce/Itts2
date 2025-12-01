@@ -1,0 +1,6 @@
+# Additional requirements for RunPod serverless endpoint
+# Main dependencies are installed via uv from pyproject.toml
+# This file contains only the serverless-specific dependencies
+
+runpod>=1.0.0
+

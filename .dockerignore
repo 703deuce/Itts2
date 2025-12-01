@@ -1,0 +1,60 @@
+# Docker ignore file for IndexTTS2 serverless endpoint
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+README*.md
+
+# Tests
+tests/
+test_*.py
+*_test.py
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Archive
+archive/
+
+# Assets (keep only if needed)
+# assets/
+
+# Examples (optional - comment out if you want to include example voices)
+examples/
+
+# Lock files (we'll regenerate in container)
+uv.lock
+

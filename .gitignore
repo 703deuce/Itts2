@@ -35,3 +35,7 @@ desktop.ini
 test_output.wav
 *.wav
 !examples/*.wav
+
+# Test endpoint script (contains sensitive API keys and endpoints)
+test_endpoint.py
+test_outputs/

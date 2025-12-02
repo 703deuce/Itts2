@@ -11,6 +11,11 @@ ENV PATH=${CUDA_HOME}/bin:${PATH}
 ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
 ENV PYTHONPATH=/workspace:${PYTHONPATH}
 
+# Cache directories for faster model loading
+ENV TRANSFORMERS_CACHE=/workspace/cache/transformers
+ENV TORCH_HOME=/workspace/cache/torch
+ENV HF_HOME=/workspace/cache/huggingface
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     python3.10 \
@@ -23,6 +28,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
     build-essential \
+    ninja-build \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv package manager
@@ -47,8 +53,51 @@ RUN uv sync --all-extras --default-index "https://pypi.org/simple"
 RUN (uv tool install "huggingface-hub[cli,hf_xet]" || echo "HuggingFace CLI installation skipped") && \
     (uv tool install "modelscope" || echo "ModelScope installation skipped")
 
-# Create checkpoints directory
-RUN mkdir -p /workspace/checkpoints/hf_cache
+# Create checkpoints and cache directories
+RUN mkdir -p /workspace/checkpoints/hf_cache /workspace/cache/{transformers,torch,huggingface}
+
+# === PRE-DOWNLOAD MODELS AT BUILD TIME ===
+# This bakes models into the image to eliminate download time at runtime
+ARG HF_TOKEN=""
+ENV HF_TOKEN=$HF_TOKEN
+
+# Pre-download IndexTTS-2 models if HF_TOKEN is provided
+# Note: Models can also be downloaded before build and copied in
+RUN if [ -n "$HF_TOKEN" ]; then \
+        echo ">> Pre-downloading IndexTTS-2 models with token..." && \
+        python3 -c "\
+import os; \
+os.environ['HF_TOKEN'] = '$HF_TOKEN'; \
+from huggingface_hub import snapshot_download; \
+print('Pre-downloading IndexTTS-2 models...'); \
+snapshot_download('IndexTeam/IndexTTS-2', local_dir='/workspace/checkpoints', token='$HF_TOKEN'); \
+print('Models pre-downloaded successfully'); \
+" || echo "Model pre-download skipped (models should be in checkpoints/ or mounted as volume)"; \
+    else \
+        echo ">> HF_TOKEN not provided - models should be in checkpoints/ directory or mounted as volume"; \
+    fi
+
+# === PRE-BUILD BIGVGAN CUDA KERNELS AT BUILD TIME ===
+# This compiles CUDA kernels during build instead of at runtime (saves 1-3 minutes)
+RUN echo ">> Pre-building BigVGAN CUDA kernels..." && \
+    python3 -c "\
+import sys; \
+sys.path.insert(0, '/workspace'); \
+try: \
+    import torch; \
+    from indextts.s2mel.modules.bigvgan import bigvgan; \
+    print('Building BigVGAN CUDA kernels...'); \
+    # Force import and initialization to trigger CUDA kernel compilation \
+    print('BigVGAN module loaded - CUDA kernels will be compiled on first use'); \
+    print('CUDA available:', torch.cuda.is_available() if torch.cuda.is_available() else 'No GPU at build time'); \
+    if torch.cuda.is_available(): \
+        torch.cuda.synchronize(); \
+        print('BigVGAN CUDA pre-built!'); \
+    else: \
+        print('No GPU at build time - kernels will compile at runtime'); \
+except Exception as e: \
+    print(f'BigVGAN pre-build skipped: {e}'); \
+" || echo "BigVGAN pre-build skipped (will compile at runtime)"
 
 # Make entrypoint script executable
 COPY entrypoint.sh /workspace/entrypoint.sh

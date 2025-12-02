@@ -1,10 +1,19 @@
 #!/bin/bash
 # Entrypoint script for RunPod serverless endpoint
-# Handles model download if models are not present
+# Handles model download if models are not present and warms up CUDA
 
 set -e
 
 echo ">> Starting IndexTTS2 RunPod Serverless Endpoint..."
+
+# === WARM UP CUDA CONTEXT ===
+echo ">> ENTRYPOINT: Pre-warming CUDA context..."
+if command -v nvidia-smi &> /dev/null; then
+    nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || echo "nvidia-smi check skipped"
+fi
+
+# Warm up PyTorch CUDA
+python3 -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); torch.cuda.is_available() and torch.cuda.synchronize(); print('CUDA context warmed')" || echo "CUDA warmup skipped"
 
 # Set HuggingFace endpoint (use mirror if needed)
 export HF_ENDPOINT=${HF_ENDPOINT:-"https://huggingface.co"}

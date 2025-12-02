@@ -14,6 +14,7 @@ import tempfile
 import json
 import traceback
 from typing import Dict, Any, Optional
+import torch
 import runpod
 from indextts.infer_v2 import IndexTTS2
 
@@ -228,9 +229,29 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
             "traceback": error_trace
         }
 
-# Initialize model at module load time (lazy initialization in handler)
+# Initialize model at module load time
 if __name__ == "__main__":
     print(">> Starting RunPod serverless handler for IndexTTS2...")
-    print(">> Model will be initialized on first request...")
+    
+    # === WARMUP: Load model IMMEDIATELY at startup ===
+    # This pre-loads the model into VRAM to eliminate cold start delay
+    print(">> WARMING UP: Loading IndexTTS2 into VRAM...")
+    try:
+        # Initialize model immediately (not lazy)
+        model = initialize_model()
+        print(">> WARMUP COMPLETE: Model loaded in VRAM - ready for instant requests!")
+        
+        # Clear any unused cache
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            print(f">> GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f} GB total")
+        
+    except Exception as e:
+        print(f">> WARMUP FAILED: {e}")
+        traceback.print_exc()
+        # Don't raise - allow handler to try again on first request
+        print(">> Will attempt to load model on first request...")
+    
+    print(">> Starting RunPod serverless...")
     runpod.serverless.start({"handler": handler})
 

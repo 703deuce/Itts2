@@ -35,7 +35,7 @@ def initialize_model():
                 cfg_path="checkpoints/config.yaml",
                 model_dir="checkpoints",
                 use_fp16=True,  # Use FP16 for lower VRAM usage
-                use_cuda_kernel=True,  # Use CUDA kernels for speed
+                use_cuda_kernel=False,  # Disabled for faster cold starts (eliminates 1+ min compilation)
                 use_deepspeed=False,  # DeepSpeed may not work well in serverless
                 use_accel=False,
                 use_torch_compile=False

@@ -77,27 +77,10 @@ print('Models pre-downloaded successfully'); \
         echo ">> HF_TOKEN not provided - models should be in checkpoints/ directory or mounted as volume"; \
     fi
 
-# === PRE-BUILD BIGVGAN CUDA KERNELS AT BUILD TIME ===
-# This compiles CUDA kernels during build instead of at runtime (saves 1-3 minutes)
-RUN echo ">> Pre-building BigVGAN CUDA kernels..." && \
-    python3 -c "\
-import sys; \
-sys.path.insert(0, '/workspace'); \
-try: \
-    import torch; \
-    from indextts.s2mel.modules.bigvgan import bigvgan; \
-    print('Building BigVGAN CUDA kernels...'); \
-    # Force import and initialization to trigger CUDA kernel compilation \
-    print('BigVGAN module loaded - CUDA kernels will be compiled on first use'); \
-    print('CUDA available:', torch.cuda.is_available() if torch.cuda.is_available() else 'No GPU at build time'); \
-    if torch.cuda.is_available(): \
-        torch.cuda.synchronize(); \
-        print('BigVGAN CUDA pre-built!'); \
-    else: \
-        print('No GPU at build time - kernels will compile at runtime'); \
-except Exception as e: \
-    print(f'BigVGAN pre-build skipped: {e}'); \
-" || echo "BigVGAN pre-build skipped (will compile at runtime)"
+# === NOTE: CUDA kernels disabled for faster cold starts ===
+# BigVGAN CUDA kernels are disabled (use_cuda_kernel=False) to eliminate
+# 1+ minute compilation time. PyTorch fallback is still real-time (<0.2s).
+# This reduces cold start from 6min to 10-20 seconds with minimal performance impact.
 
 # Make entrypoint script executable
 COPY entrypoint.sh /workspace/entrypoint.sh

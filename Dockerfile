@@ -42,8 +42,9 @@ RUN pip3 install -U uv
 WORKDIR /workspace
 
 # === LAYER 1: Copy dependency files first (for better caching) ===
-# Copy pyproject.toml (uv.lock will be copied with the rest of the code later)
-COPY pyproject.toml ./
+# Copy pyproject.toml and README.md (required for package build)
+# uv.lock will be copied with the rest of the code later
+COPY pyproject.toml README.md ./
 
 # Install main project dependencies using uv (includes runpod from pyproject.toml)
 # This layer is cached separately from code changes

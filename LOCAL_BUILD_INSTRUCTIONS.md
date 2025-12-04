@@ -11,15 +11,22 @@ docker build --build-arg HF_TOKEN=your_huggingface_token_here -t indextts2-serve
 # 2. Test the image locally
 docker run --gpus all indextts2-serverless python3 -c "from indextts.inferv2 import IndexTTS2; print('✅ Models loaded successfully')"
 
-# 3. Tag for RunPod registry
+# 3. Find your RunPod username
+#    - Go to https://www.runpod.io/console
+#    - Click on your profile/account icon (top right)
+#    - Your username is shown in the profile dropdown or account settings
+#    - OR check the URL when logged in: https://www.runpod.io/console/user/settings
+#    - The username is usually your email or a custom username you set
+
+# 4. Tag for RunPod registry (replace YOUR_USERNAME with your actual RunPod username)
 docker tag indextts2-serverless registry.runpod.io/YOUR_USERNAME/indextts2-serverless:latest
 
-# 4. Login to RunPod registry
+# 5. Login to RunPod registry
 docker login registry.runpod.io
-# Username: your_runpod_username
-# Password: your_runpod_api_key (get from https://www.runpod.io/console/user/settings)
+# Username: your_runpod_username (the one you found in step 3)
+# Password: your_runpod_api_key (get from https://www.runpod.io/console/user/settings → API Keys)
 
-# 5. Push to RunPod
+# 6. Push to RunPod
 docker push registry.runpod.io/YOUR_USERNAME/indextts2-serverless:latest
 ```
 
@@ -44,10 +51,29 @@ docker push YOUR_DOCKERHUB_USERNAME/indextts2-serverless:latest
 - ✅ **Models pre-baked** into image (30s cold starts)
 - ✅ **One-time setup** - push once, use forever
 
+## Finding Your RunPod Username
+
+**Method 1: Profile Dropdown**
+1. Go to https://www.runpod.io/console
+2. Click your profile icon (top right corner)
+3. Your username is displayed in the dropdown menu
+
+**Method 2: Account Settings**
+1. Go to https://www.runpod.io/console/user/settings
+2. Your username is shown at the top of the page
+
+**Method 3: API Keys Page**
+1. Go to https://www.runpod.io/console/user/settings
+2. Click on "API Keys" tab
+3. Your username may be visible in the page URL or header
+
+**Note**: If you can't find it, you can also use your RunPod account email as the username (some accounts use email as username).
+
 ## After Pushing
 
 1. Go to RunPod Console → Serverless → Your Endpoint
 2. Update the Docker image to: `registry.runpod.io/YOUR_USERNAME/indextts2-serverless:latest`
+   (Replace `YOUR_USERNAME` with the username you found above)
 3. Deploy - models are already baked in!
 
 ## Troubleshooting

@@ -165,10 +165,11 @@ COPY --from=builder /build/entrypoint.sh /workspace/entrypoint.sh
 COPY --from=builder /build/pyproject.toml /workspace/pyproject.toml
 COPY --from=builder /build/README.md /workspace/README.md
 
-# Copy any other Python files that might be needed
-COPY --from=builder /build/*.py /workspace/ 2>/dev/null || true
-COPY --from=builder /build/*.yaml /workspace/ 2>/dev/null || true
-COPY --from=builder /build/*.yml /workspace/ 2>/dev/null || true
+# Copy optional files if they exist (using RUN with shell to handle missing files)
+RUN set -e; \
+    if [ -f /build/uv.lock ]; then cp /build/uv.lock /workspace/; fi; \
+    if [ -f /build/.python-version ]; then cp /build/.python-version /workspace/; fi; \
+    true
 
 # Create cache directories
 RUN mkdir -p /workspace/cache/{transformers,torch,huggingface}

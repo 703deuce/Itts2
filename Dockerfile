@@ -1,4 +1,5 @@
 # Dockerfile for IndexTTS2 RunPod Serverless Endpoint
+# Optimized for fast cold starts with pre-downloaded models and pre-built FSTs
 FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 
 # Set environment variables

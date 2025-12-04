@@ -31,13 +31,15 @@ RUN apt-get update && apt-get install -y \
     libsndfile1 \
     build-essential \
     ninja-build \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Create symlink for python3.10 to ensure it's available as python3
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python3
 
 # Install uv package manager
-RUN pip3 install -U uv
+RUN pip3 install -U uv && \
+    pip3 cache purge || true
 
 # Set working directory
 WORKDIR /workspace
@@ -51,6 +53,7 @@ RUN git lfs install && \
 
 # Install main project dependencies using uv (includes runpod from pyproject.toml)
 # Specify Python 3.10 explicitly
+# Clean up caches periodically to avoid disk space issues
 RUN uv sync --all-extras --python 3.10
 
 # Install model download tools

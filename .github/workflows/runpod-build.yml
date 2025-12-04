@@ -1,0 +1,60 @@
+name: Build for RunPod Serverless
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to RunPod Registry (optional)
+        if: ${{ secrets.RUNPOD_USERNAME != '' && secrets.RUNPOD_PASSWORD != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: registry.runpod.io
+          username: ${{ secrets.RUNPOD_USERNAME }}
+          password: ${{ secrets.RUNPOD_PASSWORD }}
+
+      - name: Login to Docker Hub (optional)
+        if: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Docker Image with Models
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ secrets.RUNPOD_USERNAME != '' || secrets.DOCKER_USERNAME != '' }}
+          platforms: linux/amd64
+          build-args: |
+            HF_TOKEN=${{ secrets.HF_TOKEN }}
+          tags: |
+            ${{ secrets.RUNPOD_USERNAME != '' && format('registry.runpod.io/{0}/indextts2-serverless:latest', secrets.RUNPOD_USERNAME) || (secrets.DOCKER_USERNAME != '' && format('{0}/indextts2-serverless:latest', secrets.DOCKER_USERNAME) || 'indextts2-serverless:latest') }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Output Build Info
+        run: |
+          echo "✅ Docker image built successfully!"
+          echo "📦 Image tags:"
+          echo "${{ steps.build.outputs.digest }}"
+          if [ -n "${{ secrets.RUNPOD_USERNAME }}" ]; then
+            echo "🚀 Pushed to: registry.runpod.io/${{ secrets.RUNPOD_USERNAME }}/indextts2-serverless:latest"
+          elif [ -n "${{ secrets.DOCKER_USERNAME }}" ]; then
+            echo "🚀 Pushed to: ${{ secrets.DOCKER_USERNAME }}/indextts2-serverless:latest"
+          else
+            echo "⚠️  No registry credentials found - image built but not pushed"
+            echo "💡 Add RUNPOD_USERNAME/RUNPOD_PASSWORD or DOCKER_USERNAME/DOCKER_PASSWORD secrets to push"
+          fi

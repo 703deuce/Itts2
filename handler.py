@@ -19,15 +19,28 @@ import runpod
 from indextts.infer_v2 import IndexTTS2
 
 # Initialize the TTS model globally to avoid reloading on each request
+# Models are pre-baked into the Docker image, so initialization should be fast (~2min load time)
 tts_model = None
 
 def initialize_model():
-    """Initialize the IndexTTS2 model once at startup."""
+    """
+    Initialize the IndexTTS2 model once at startup.
+    
+    NOTE: All models are pre-downloaded in Dockerfile:
+    - IndexTTS-2 (main model, includes qwen0.6b-emo4-merge)
+    - amphion/MaskGCT (semantic codec)
+    - funasr/campplus (speaker encoder)
+    - nvidia/bigvgan_v2_22khz_80band_256x (vocoder)
+    - facebook/w2v-bert-2.0 (semantic model)
+    
+    WeText FSTs are also pre-built, so no runtime compilation needed.
+    """
     global tts_model
     if tts_model is None:
         print(">> Initializing IndexTTS2 model...")
+        print(">>   (Models are pre-baked in image - no downloads expected)")
         try:
-            # Set environment variables
+            # Set environment variables (models already in ./checkpoints/hf_cache from Dockerfile)
             os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'
             
             # Initialize model with optimized settings for serverless

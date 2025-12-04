@@ -92,6 +92,14 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
+      - name: Clean up before build
+        run: |
+          echo "Cleaning up before Docker build..."
+          docker system prune -af || true
+          sudo rm -rf /home/runner/actions-runner/_diag/* || true
+          sudo rm -rf /home/runner/actions-runner/cached/_diag/* || true
+          df -h
+
       - name: Build Docker Image with Models
         id: build
         uses: docker/build-push-action@v5
@@ -105,9 +113,19 @@ jobs:
           tags: |
             ${{ steps.image_tag.outputs.tag }}
             ${{ steps.image_tag.outputs.tag_sha }}
-          # Use GitHub Actions cache with size limits to avoid disk space issues
+          # Disable cache to save disk space (slower builds but avoids space issues)
+          no-cache: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Clean up after build
+        if: always()
+        run: |
+          echo "Cleaning up after Docker build..."
+          docker system prune -af || true
+          sudo rm -rf /home/runner/actions-runner/_diag/* || true
+          sudo rm -rf /home/runner/actions-runner/cached/_diag/* || true
+          df -h
 
       - name: Output Build Info
         run: |

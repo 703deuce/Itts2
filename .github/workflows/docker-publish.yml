@@ -47,6 +47,19 @@ jobs:
             echo "should_push=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Verify HF_TOKEN secret
+        run: |
+          if [ -z "${{ secrets.HF_TOKEN }}" ]; then
+            echo "⚠️  WARNING: HF_TOKEN secret is not set!"
+            echo "💡 Go to: https://github.com/${{ github.repository }}/settings/secrets/actions"
+            echo "💡 Add a secret named 'HF_TOKEN' with your HuggingFace token"
+            exit 1
+          else
+            echo "✅ HF_TOKEN secret is set (length: ${#HF_TOKEN} characters)"
+          fi
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+
       - name: Build Docker Image with Models
         id: build
         uses: docker/build-push-action@v5

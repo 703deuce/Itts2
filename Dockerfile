@@ -106,8 +106,9 @@ print('>> All models pre-downloaded successfully'); \
 
 # === PRE-BUILD WeText FSTs ===
 # This eliminates the ~30s FST compilation time on every cold start
+# Use the uv-managed Python from .venv to ensure all dependencies are available
 RUN echo ">> Pre-building WeText FSTs..." && \
-    python3 -c "\
+    /workspace/.venv/bin/python3 -c "\
 import os; \
 import sys; \
 os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'; \

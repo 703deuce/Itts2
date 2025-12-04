@@ -42,30 +42,20 @@ RUN pip3 install -U uv
 # Set working directory
 WORKDIR /workspace
 
-# === LAYER 1: Copy dependency files first (for better caching) ===
-# Copy pyproject.toml and README.md (required for package metadata)
-# uv.lock will be copied with the rest of the code later
-COPY pyproject.toml README.md ./
-
-# Install main project dependencies using uv (includes runpod from pyproject.toml)
-# Use --no-install-project to install dependencies without building the package itself
-# This allows us to cache dependencies separately from code changes
-# Specify Python 3.10 explicitly and use system Python
-RUN uv sync --all-extras --python 3.10 --no-install-project
-
-# Install model download tools
-RUN (uv tool install "huggingface-hub[cli,hf_xet]" || echo "HuggingFace CLI installation skipped") && \
-    (uv tool install "modelscope" || echo "ModelScope installation skipped")
-
-# === LAYER 2: Copy code and build/pre-compile everything ===
+# === LAYER 1: Copy all code (needed for uv sync to work properly) ===
 COPY . /workspace/
-
-# Install the project itself now that all source code is available
-RUN uv sync --all-extras --python 3.10
 
 # Install git-lfs and pull large files
 RUN git lfs install && \
     (git lfs pull || echo "Git LFS pull completed or skipped")
+
+# Install main project dependencies using uv (includes runpod from pyproject.toml)
+# Specify Python 3.10 explicitly
+RUN uv sync --all-extras --python 3.10
+
+# Install model download tools
+RUN (uv tool install "huggingface-hub[cli,hf_xet]" || echo "HuggingFace CLI installation skipped") && \
+    (uv tool install "modelscope" || echo "ModelScope installation skipped")
 
 # Create checkpoints and cache directories
 RUN mkdir -p /workspace/checkpoints/hf_cache /workspace/cache/{transformers,torch,huggingface}

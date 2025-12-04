@@ -31,17 +31,23 @@ jobs:
           # Clean package manager caches
           sudo apt-get clean || true
           sudo rm -rf /var/lib/apt/lists/* || true
-          # Clean Docker
+          # Clean Docker (aggressive)
           docker system prune -af --volumes || true
-          # Clean GitHub Actions runner cache
+          docker builder prune -af || true
+          # Clean GitHub Actions runner cache and diagnostics (CRITICAL - these fill up fast)
           sudo rm -rf /home/runner/actions-runner/_diag/* || true
           sudo rm -rf /home/runner/actions-runner/cached/_diag/* || true
+          sudo rm -rf /home/runner/actions-runner/_work/_temp/* || true
+          sudo find /home/runner/actions-runner -name "*.log" -type f -delete || true
           # Clean temporary files
           sudo rm -rf /tmp/* || true
           sudo rm -rf /var/tmp/* || true
           # Clean pip/uv caches
           rm -rf ~/.cache/pip/* || true
           rm -rf ~/.cache/uv/* || true
+          rm -rf ~/.cache/huggingface/* || true
+          # Clean GitHub Actions cache (can be large)
+          sudo rm -rf /home/runner/.cache/* || true
           echo "Disk usage after cleanup:"
           df -h
           echo "Available space:"
@@ -95,9 +101,16 @@ jobs:
       - name: Clean up before build
         run: |
           echo "Cleaning up before Docker build..."
+          # Clean Docker aggressively
           docker system prune -af || true
+          docker builder prune -af || true
+          # Clean runner diagnostics (these cause the "No space left" errors)
+          sudo find /home/runner/actions-runner -name "*.log" -type f -delete || true
           sudo rm -rf /home/runner/actions-runner/_diag/* || true
           sudo rm -rf /home/runner/actions-runner/cached/_diag/* || true
+          sudo rm -rf /home/runner/actions-runner/_work/_temp/* || true
+          # Clean any large caches
+          sudo rm -rf /home/runner/.cache/huggingface/* || true
           df -h
 
       - name: Build Docker Image with Models
@@ -122,9 +135,14 @@ jobs:
         if: always()
         run: |
           echo "Cleaning up after Docker build..."
+          # Clean Docker
           docker system prune -af || true
+          docker builder prune -af || true
+          # Clean runner diagnostics
+          sudo find /home/runner/actions-runner -name "*.log" -type f -delete || true
           sudo rm -rf /home/runner/actions-runner/_diag/* || true
           sudo rm -rf /home/runner/actions-runner/cached/_diag/* || true
+          sudo rm -rf /home/runner/actions-runner/_work/_temp/* || true
           df -h
 
       - name: Output Build Info

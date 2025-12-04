@@ -44,7 +44,8 @@ COPY pyproject.toml ./
 # Install main project dependencies using uv (includes runpod from pyproject.toml)
 # This layer is cached separately from code changes
 # Note: uv.lock will be available after COPY . below, but uv sync works without it
-RUN uv sync --all-extras --default-index "https://pypi.org/simple"
+# uv sync will use the default PyPI index and custom PyTorch index from pyproject.toml
+RUN uv sync --all-extras
 
 # Install model download tools
 RUN (uv tool install "huggingface-hub[cli,hf_xet]" || echo "HuggingFace CLI installation skipped") && \

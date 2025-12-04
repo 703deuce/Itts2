@@ -19,14 +19,33 @@ jobs:
         run: |
           echo "Current disk usage:"
           df -h
-          echo "Cleaning up disk space..."
+          echo "Cleaning up disk space aggressively..."
+          # Remove large toolchains
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /opt/microsoft
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          # Clean package manager caches
+          sudo apt-get clean || true
+          sudo rm -rf /var/lib/apt/lists/* || true
+          # Clean Docker
           docker system prune -af --volumes || true
+          # Clean GitHub Actions runner cache
+          sudo rm -rf /home/runner/actions-runner/_diag/* || true
+          sudo rm -rf /home/runner/actions-runner/cached/_diag/* || true
+          # Clean temporary files
+          sudo rm -rf /tmp/* || true
+          sudo rm -rf /var/tmp/* || true
+          # Clean pip/uv caches
+          rm -rf ~/.cache/pip/* || true
+          rm -rf ~/.cache/uv/* || true
           echo "Disk usage after cleanup:"
           df -h
+          echo "Available space:"
+          df -h / | tail -1
 
       - name: Login to RunPod Registry (optional)
         continue-on-error: true

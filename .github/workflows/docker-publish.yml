@@ -113,8 +113,8 @@ jobs:
           tags: |
             ${{ steps.image_tag.outputs.tag }}
             ${{ steps.image_tag.outputs.tag_sha }}
-          # Disable cache to save disk space (slower builds but avoids space issues)
-          no-cache: false
+          # Enable BuildKit for cache mounts (reduces disk usage)
+          # Split RUN layers + cache mounts = better space management
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

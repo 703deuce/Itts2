@@ -61,32 +61,83 @@ RUN (uv tool install "huggingface-hub[cli,hf_xet]" || echo "HuggingFace CLI inst
 RUN mkdir -p /build/checkpoints/hf_cache /build/cache/{transformers,torch,huggingface}
 
 # === PRE-DOWNLOAD ALL MODELS AT BUILD TIME ===
+# Split downloads across multiple RUN layers to avoid disk space issues
+# Each layer is cached separately, reducing peak disk usage
 ARG HF_TOKEN=""
 ENV HF_TOKEN=$HF_TOKEN
 
-# Pre-download ALL models if HF_TOKEN is provided
-# Download models one at a time with error handling
-RUN if [ -n "$HF_TOKEN" ]; then \
-        echo ">> Pre-downloading ALL IndexTTS2 models with token..." && \
+# Download IndexTTS-2 main model (largest, ~2-3GB)
+# Use BuildKit cache mount to store HF cache separately
+RUN --mount=type=cache,target=/root/.cache/huggingface \
+    if [ -n "$HF_TOKEN" ]; then \
+        echo ">> Pre-downloading IndexTTS-2 models (includes qwen0.6b-emo4-merge)..." && \
         /build/.venv/bin/python3 -c "\
 import os; \
 os.environ['HF_TOKEN'] = '$HF_TOKEN'; \
 os.environ['HF_HUB_CACHE'] = '/build/checkpoints/hf_cache'; \
-from huggingface_hub import snapshot_download, hf_hub_download; \
-print('>> Pre-downloading IndexTTS-2 models (includes qwen0.6b-emo4-merge)...'); \
+from huggingface_hub import snapshot_download; \
 snapshot_download('IndexTeam/IndexTTS-2', local_dir='/build/checkpoints', token='$HF_TOKEN'); \
-print('>> Pre-downloading MaskGCT semantic codec (specific file)...'); \
-hf_hub_download('amphion/MaskGCT', filename='semantic_codec/model.safetensors', token='$HF_TOKEN'); \
-print('>> Pre-downloading campplus speaker encoder (specific file)...'); \
-hf_hub_download('funasr/campplus', filename='campplus_cn_common.bin', token='$HF_TOKEN'); \
-print('>> Pre-downloading BigVGAN vocoder...'); \
-snapshot_download('nvidia/bigvgan_v2_22khz_80band_256x', local_dir='/build/checkpoints/hf_cache/models--nvidia--bigvgan_v2_22khz_80band_256x', token='$HF_TOKEN'); \
-print('>> Pre-downloading w2v-bert-2.0 semantic model...'); \
-snapshot_download('facebook/w2v-bert-2.0', local_dir='/build/checkpoints/hf_cache/models--facebook--w2v-bert-2.0', token='$HF_TOKEN'); \
-print('>> All models pre-downloaded successfully'); \
-" || echo "Model pre-download failed - will download at runtime"; \
+print('>> IndexTTS-2 downloaded successfully'); \
+" || echo "IndexTTS-2 download failed - will download at runtime"; \
     else \
-        echo ">> HF_TOKEN not provided - models should be in checkpoints/ directory or mounted as volume"; \
+        echo ">> HF_TOKEN not provided - skipping IndexTTS-2 download"; \
+    fi
+
+# Download MaskGCT semantic codec (specific file, ~500MB)
+RUN --mount=type=cache,target=/root/.cache/huggingface \
+    if [ -n "$HF_TOKEN" ]; then \
+        echo ">> Pre-downloading MaskGCT semantic codec..." && \
+        /build/.venv/bin/python3 -c "\
+import os; \
+os.environ['HF_TOKEN'] = '$HF_TOKEN'; \
+os.environ['HF_HUB_CACHE'] = '/build/checkpoints/hf_cache'; \
+from huggingface_hub import hf_hub_download; \
+hf_hub_download('amphion/MaskGCT', filename='semantic_codec/model.safetensors', local_dir='/build/checkpoints/hf_cache/models--amphion--MaskGCT', token='$HF_TOKEN'); \
+print('>> MaskGCT downloaded successfully'); \
+" || echo "MaskGCT download failed - will download at runtime"; \
+    fi
+
+# Download campplus speaker encoder (specific file, ~200MB)
+RUN --mount=type=cache,target=/root/.cache/huggingface \
+    if [ -n "$HF_TOKEN" ]; then \
+        echo ">> Pre-downloading campplus speaker encoder..." && \
+        /build/.venv/bin/python3 -c "\
+import os; \
+os.environ['HF_TOKEN'] = '$HF_TOKEN'; \
+os.environ['HF_HUB_CACHE'] = '/build/checkpoints/hf_cache'; \
+from huggingface_hub import hf_hub_download; \
+hf_hub_download('funasr/campplus', filename='campplus_cn_common.bin', local_dir='/build/checkpoints/hf_cache/models--funasr--campplus', token='$HF_TOKEN'); \
+print('>> campplus downloaded successfully'); \
+" || echo "campplus download failed - will download at runtime"; \
+    fi
+
+# Download BigVGAN vocoder (~1-2GB)
+RUN --mount=type=cache,target=/root/.cache/huggingface \
+    if [ -n "$HF_TOKEN" ]; then \
+        echo ">> Pre-downloading BigVGAN vocoder..." && \
+        /build/.venv/bin/python3 -c "\
+import os; \
+os.environ['HF_TOKEN'] = '$HF_TOKEN'; \
+os.environ['HF_HUB_CACHE'] = '/build/checkpoints/hf_cache'; \
+from huggingface_hub import snapshot_download; \
+snapshot_download('nvidia/bigvgan_v2_22khz_80band_256x', local_dir='/build/checkpoints/hf_cache/models--nvidia--bigvgan_v2_22khz_80band_256x', token='$HF_TOKEN'); \
+print('>> BigVGAN downloaded successfully'); \
+" || echo "BigVGAN download failed - will download at runtime"; \
+    fi
+
+# Download w2v-bert-2.0 semantic model (~1-2GB)
+RUN --mount=type=cache,target=/root/.cache/huggingface \
+    if [ -n "$HF_TOKEN" ]; then \
+        echo ">> Pre-downloading w2v-bert-2.0 semantic model..." && \
+        /build/.venv/bin/python3 -c "\
+import os; \
+os.environ['HF_TOKEN'] = '$HF_TOKEN'; \
+os.environ['HF_HUB_CACHE'] = '/build/checkpoints/hf_cache'; \
+from huggingface_hub import snapshot_download; \
+snapshot_download('facebook/w2v-bert-2.0', local_dir='/build/checkpoints/hf_cache/models--facebook--w2v-bert-2.0', token='$HF_TOKEN'); \
+print('>> w2v-bert-2.0 downloaded successfully'); \
+print('>> All models pre-downloaded successfully'); \
+" || echo "w2v-bert-2.0 download failed - will download at runtime"; \
     fi
 
 # === PRE-BUILD WeText FSTs ===

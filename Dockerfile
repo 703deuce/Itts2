@@ -75,9 +75,10 @@ ARG HF_TOKEN=""
 ENV HF_TOKEN=$HF_TOKEN
 
 # Pre-download ALL models if HF_TOKEN is provided
+# Use venv Python to ensure huggingface_hub is available
 RUN if [ -n "$HF_TOKEN" ]; then \
         echo ">> Pre-downloading ALL IndexTTS2 models with token..." && \
-        python3 -c "\
+        /workspace/.venv/bin/python3 -c "\
 import os; \
 os.environ['HF_TOKEN'] = '$HF_TOKEN'; \
 os.environ['HF_HUB_CACHE'] = '/workspace/checkpoints/hf_cache'; \

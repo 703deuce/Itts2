@@ -20,6 +20,7 @@ ENV HF_HOME=/workspace/cache/huggingface
 RUN apt-get update && apt-get install -y \
     python3.10 \
     python3.10-dev \
+    python3.10-venv \
     python3-pip \
     git \
     git-lfs \
@@ -30,6 +31,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     ninja-build \
     && rm -rf /var/lib/apt/lists/*
+
+# Create symlink for python3.10 to ensure it's available as python3
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python3
 
 # Install uv package manager
 RUN pip3 install -U uv
@@ -44,8 +48,8 @@ COPY pyproject.toml ./
 # Install main project dependencies using uv (includes runpod from pyproject.toml)
 # This layer is cached separately from code changes
 # Note: uv.lock will be available after COPY . below, but uv sync works without it
-# uv sync will use the default PyPI index and custom PyTorch index from pyproject.toml
-RUN uv sync --all-extras
+# Specify Python 3.10 explicitly and use system Python
+RUN uv sync --all-extras --python 3.10
 
 # Install model download tools
 RUN (uv tool install "huggingface-hub[cli,hf_xet]" || echo "HuggingFace CLI installation skipped") && \

@@ -1,44 +1,63 @@
 name: Build and Publish Docker Image
+
 on:
+  push:
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
-  build-amd64:
-    runs-on: ubuntu-22.04
-    strategy:
-      matrix:
-        include:
-          - cuda_version: 11.8
-            torch_version: 2.4.1
-            tag_prefix: pytorch2.4.1-cuda11.8
-          - cuda_version: 12.8
-            torch_version: 2.8.0
-            tag_prefix: pytorch2.8.0-cuda12.8
+  build-runpod:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Extract Docker Meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: nanaoto/index-tts
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Docker Image
+      - name: Login to RunPod Registry (optional)
+        if: ${{ secrets.RUNPOD_USERNAME != '' && secrets.RUNPOD_PASSWORD != '' }}
+        uses: docker/login-action@v3
+        with:
+          registry: registry.runpod.io
+          username: ${{ secrets.RUNPOD_USERNAME }}
+          password: ${{ secrets.RUNPOD_PASSWORD }}
+
+      - name: Login to Docker Hub (optional)
+        if: ${{ secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Docker Image with Models
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          push: false
+          push: ${{ secrets.RUNPOD_USERNAME != '' || secrets.DOCKER_USERNAME != '' }}
           platforms: linux/amd64
           build-args: |
-            CUDA_VERSION=${{ matrix.cuda_version }}
-            TORCH_VERSION=${{ matrix.torch_version }}
+            HF_TOKEN=${{ secrets.HF_TOKEN }}
           tags: |
-            nanaoto/index-tts:${{ matrix.tag_prefix }}-${{ steps.meta.outputs.tags }}-amd64
-            nanaoto/index-tts:latest-${{ matrix.tag_prefix }}-amd64
+            ${{ secrets.RUNPOD_USERNAME != '' && format('registry.runpod.io/{0}/indextts2-serverless:latest', secrets.RUNPOD_USERNAME) || (secrets.DOCKER_USERNAME != '' && format('{0}/indextts2-serverless:latest', secrets.DOCKER_USERNAME) || 'indextts2-serverless:latest') }}
+            ${{ secrets.RUNPOD_USERNAME != '' && format('registry.runpod.io/{0}/indextts2-serverless:{1}', secrets.RUNPOD_USERNAME, github.sha) || (secrets.DOCKER_USERNAME != '' && format('{0}/indextts2-serverless:{1}', secrets.DOCKER_USERNAME, github.sha) || format('indextts2-serverless:{0}', github.sha)) }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Output Build Info
+        run: |
+          echo "✅ Docker image built successfully with models pre-downloaded!"
+          if [ -n "${{ secrets.RUNPOD_USERNAME }}" ]; then
+            echo "🚀 Pushed to: registry.runpod.io/${{ secrets.RUNPOD_USERNAME }}/indextts2-serverless:latest"
+            echo "📝 Use this image in RunPod: registry.runpod.io/${{ secrets.RUNPOD_USERNAME }}/indextts2-serverless:latest"
+          elif [ -n "${{ secrets.DOCKER_USERNAME }}" ]; then
+            echo "🚀 Pushed to: ${{ secrets.DOCKER_USERNAME }}/indextts2-serverless:latest"
+            echo "📝 Use this image in RunPod: ${{ secrets.DOCKER_USERNAME }}/indextts2-serverless:latest"
+          else
+            echo "⚠️  No registry credentials found - image built but not pushed"
+            echo "💡 Add RUNPOD_USERNAME/RUNPOD_PASSWORD or DOCKER_USERNAME/DOCKER_PASSWORD secrets to push automatically"
+          fi
             
             

@@ -1,21 +1,20 @@
 # Dockerfile for IndexTTS2 RunPod Serverless Endpoint
 # Optimized for fast cold starts with pre-downloaded models and pre-built FSTs
-FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
+# Multi-stage build to handle disk space constraints
+
+# ============================================================================
+# BUILDER STAGE - Downloads models and builds everything
+# ============================================================================
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04 AS builder
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV HF_HUB_CACHE=/workspace/checkpoints/hf_cache
+ENV HF_HUB_CACHE=/build/checkpoints/hf_cache
 ENV HF_ENDPOINT=https://huggingface.co
 ENV CUDA_HOME=/usr/local/cuda
 ENV PATH=${CUDA_HOME}/bin:${PATH}
 ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
-ENV PYTHONPATH=/workspace:${PYTHONPATH}
-
-# Cache directories for faster model loading
-ENV TRANSFORMERS_CACHE=/workspace/cache/transformers
-ENV TORCH_HOME=/workspace/cache/torch
-ENV HF_HOME=/workspace/cache/huggingface
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -34,7 +33,116 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Create symlink for python3.10 to ensure it's available as python3
+# Create symlink for python3.10
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python3
+
+# Install uv package manager
+RUN pip3 install -U uv && \
+    pip3 cache purge || true
+
+# Set working directory
+WORKDIR /build
+
+# Copy all code
+COPY . /build/
+
+# Install git-lfs and pull large files
+RUN git lfs install && \
+    (git lfs pull || echo "Git LFS pull completed or skipped")
+
+# Install main project dependencies using uv
+RUN uv sync --all-extras --python 3.10
+
+# Install model download tools
+RUN (uv tool install "huggingface-hub[cli,hf_xet]" || echo "HuggingFace CLI installation skipped") && \
+    (uv tool install "modelscope" || echo "ModelScope installation skipped")
+
+# Create checkpoints and cache directories
+RUN mkdir -p /build/checkpoints/hf_cache /build/cache/{transformers,torch,huggingface}
+
+# === PRE-DOWNLOAD ALL MODELS AT BUILD TIME ===
+ARG HF_TOKEN=""
+ENV HF_TOKEN=$HF_TOKEN
+
+# Pre-download ALL models if HF_TOKEN is provided
+# Download models one at a time with error handling
+RUN if [ -n "$HF_TOKEN" ]; then \
+        echo ">> Pre-downloading ALL IndexTTS2 models with token..." && \
+        /build/.venv/bin/python3 -c "\
+import os; \
+os.environ['HF_TOKEN'] = '$HF_TOKEN'; \
+os.environ['HF_HUB_CACHE'] = '/build/checkpoints/hf_cache'; \
+from huggingface_hub import snapshot_download, hf_hub_download; \
+print('>> Pre-downloading IndexTTS-2 models (includes qwen0.6b-emo4-merge)...'); \
+snapshot_download('IndexTeam/IndexTTS-2', local_dir='/build/checkpoints', token='$HF_TOKEN'); \
+print('>> Pre-downloading MaskGCT semantic codec (specific file)...'); \
+hf_hub_download('amphion/MaskGCT', filename='semantic_codec/model.safetensors', token='$HF_TOKEN'); \
+print('>> Pre-downloading campplus speaker encoder (specific file)...'); \
+hf_hub_download('funasr/campplus', filename='campplus_cn_common.bin', token='$HF_TOKEN'); \
+print('>> Pre-downloading BigVGAN vocoder...'); \
+snapshot_download('nvidia/bigvgan_v2_22khz_80band_256x', local_dir='/build/checkpoints/hf_cache/models--nvidia--bigvgan_v2_22khz_80band_256x', token='$HF_TOKEN'); \
+print('>> Pre-downloading w2v-bert-2.0 semantic model...'); \
+snapshot_download('facebook/w2v-bert-2.0', local_dir='/build/checkpoints/hf_cache/models--facebook--w2v-bert-2.0', token='$HF_TOKEN'); \
+print('>> All models pre-downloaded successfully'); \
+" || echo "Model pre-download failed - will download at runtime"; \
+    else \
+        echo ">> HF_TOKEN not provided - models should be in checkpoints/ directory or mounted as volume"; \
+    fi
+
+# === PRE-BUILD WeText FSTs ===
+RUN echo ">> Pre-building WeText FSTs..." && \
+    /build/.venv/bin/python3 -c "\
+import os; \
+import sys; \
+os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'; \
+sys.path.insert(0, '/build'); \
+from indextts.utils.front import TextNormalizer; \
+normalizer = TextNormalizer(); \
+normalizer.load(); \
+print('>> WeText FSTs pre-built successfully'); \
+" || echo "FST pre-build skipped (will build on first use)"
+
+# === PRE-COMPILE BigVGAN CUDA ===
+RUN echo ">> Pre-compiling BigVGAN module..." && \
+    /build/.venv/bin/python3 -c "\
+import sys; \
+sys.path.insert(0, '/build'); \
+import indextts.s2mel.modules.bigvgan; \
+print('>> BigVGAN module pre-compiled successfully'); \
+" || echo "BigVGAN pre-compile skipped"
+
+# ============================================================================
+# FINAL STAGE - Copy only what's needed for runtime
+# ============================================================================
+FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV HF_HUB_CACHE=/workspace/checkpoints/hf_cache
+ENV HF_ENDPOINT=https://huggingface.co
+ENV CUDA_HOME=/usr/local/cuda
+ENV PATH=${CUDA_HOME}/bin:${PATH}
+ENV LD_LIBRARY_PATH=${CUDA_HOME}/lib64:${LD_LIBRARY_PATH}
+ENV PYTHONPATH=/workspace:${PYTHONPATH}
+
+# Cache directories for faster model loading
+ENV TRANSFORMERS_CACHE=/workspace/cache/transformers
+ENV TORCH_HOME=/workspace/cache/torch
+ENV HF_HOME=/workspace/cache/huggingface
+
+# Install minimal runtime dependencies
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3.10-venv \
+    git \
+    git-lfs \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create symlink for python3.10
 RUN ln -sf /usr/bin/python3.10 /usr/bin/python3
 
 # Install uv package manager
@@ -44,94 +152,28 @@ RUN pip3 install -U uv && \
 # Set working directory
 WORKDIR /workspace
 
-# === LAYER 1: Copy all code (needed for uv sync to work properly) ===
-COPY . /workspace/
+# Copy virtual environment from builder
+COPY --from=builder /build/.venv /workspace/.venv
 
-# Install git-lfs and pull large files
-RUN git lfs install && \
-    (git lfs pull || echo "Git LFS pull completed or skipped")
+# Copy checkpoints (models) from builder
+COPY --from=builder /build/checkpoints /workspace/checkpoints
 
-# Install main project dependencies using uv (includes runpod from pyproject.toml)
-# Specify Python 3.10 explicitly
-# Clean up caches periodically to avoid disk space issues
-RUN uv sync --all-extras --python 3.10
+# Copy all code (needed for imports and runtime)
+COPY --from=builder /build/indextts /workspace/indextts
+COPY --from=builder /build/handler.py /workspace/handler.py
+COPY --from=builder /build/entrypoint.sh /workspace/entrypoint.sh
+COPY --from=builder /build/pyproject.toml /workspace/pyproject.toml
+COPY --from=builder /build/README.md /workspace/README.md
 
-# Install model download tools
-RUN (uv tool install "huggingface-hub[cli,hf_xet]" || echo "HuggingFace CLI installation skipped") && \
-    (uv tool install "modelscope" || echo "ModelScope installation skipped")
+# Copy any other Python files that might be needed
+COPY --from=builder /build/*.py /workspace/ 2>/dev/null || true
+COPY --from=builder /build/*.yaml /workspace/ 2>/dev/null || true
+COPY --from=builder /build/*.yml /workspace/ 2>/dev/null || true
 
-# Create checkpoints and cache directories
-RUN mkdir -p /workspace/checkpoints/hf_cache /workspace/cache/{transformers,torch,huggingface}
-
-# === PRE-DOWNLOAD ALL MODELS AT BUILD TIME ===
-# This bakes ALL models into the image to eliminate download time at runtime
-# Models downloaded:
-# - IndexTTS-2 (main model, includes qwen0.6b-emo4-merge)
-# - amphion/MaskGCT (semantic codec)
-# - funasr/campplus (speaker encoder)
-# - nvidia/bigvgan_v2_22khz_80band_256x (vocoder)
-# - facebook/w2v-bert-2.0 (semantic model)
-ARG HF_TOKEN=""
-ENV HF_TOKEN=$HF_TOKEN
-
-# Pre-download ALL models if HF_TOKEN is provided
-# Use venv Python to ensure huggingface_hub is available
-RUN if [ -n "$HF_TOKEN" ]; then \
-        echo ">> Pre-downloading ALL IndexTTS2 models with token..." && \
-        /workspace/.venv/bin/python3 -c "\
-import os; \
-os.environ['HF_TOKEN'] = '$HF_TOKEN'; \
-os.environ['HF_HUB_CACHE'] = '/workspace/checkpoints/hf_cache'; \
-from huggingface_hub import snapshot_download, hf_hub_download; \
-print('>> Pre-downloading IndexTTS-2 models (includes qwen0.6b-emo4-merge)...'); \
-snapshot_download('IndexTeam/IndexTTS-2', local_dir='/workspace/checkpoints', token='$HF_TOKEN'); \
-print('>> Pre-downloading MaskGCT semantic codec (specific file)...'); \
-hf_hub_download('amphion/MaskGCT', filename='semantic_codec/model.safetensors', token='$HF_TOKEN'); \
-print('>> Pre-downloading campplus speaker encoder (specific file)...'); \
-hf_hub_download('funasr/campplus', filename='campplus_cn_common.bin', token='$HF_TOKEN'); \
-print('>> Pre-downloading BigVGAN vocoder...'); \
-snapshot_download('nvidia/bigvgan_v2_22khz_80band_256x', local_dir='/workspace/checkpoints/hf_cache/models--nvidia--bigvgan_v2_22khz_80band_256x', token='$HF_TOKEN'); \
-print('>> Pre-downloading w2v-bert-2.0 semantic model...'); \
-snapshot_download('facebook/w2v-bert-2.0', local_dir='/workspace/checkpoints/hf_cache/models--facebook--w2v-bert-2.0', token='$HF_TOKEN'); \
-print('>> All models pre-downloaded successfully'); \
-" || echo "Model pre-download skipped (models should be in checkpoints/ or mounted as volume)"; \
-    else \
-        echo ">> HF_TOKEN not provided - models should be in checkpoints/ directory or mounted as volume"; \
-    fi
-
-# === PRE-BUILD WeText FSTs ===
-# This eliminates the ~30s FST compilation time on every cold start
-# Use the uv-managed Python from .venv to ensure all dependencies are available
-RUN echo ">> Pre-building WeText FSTs..." && \
-    /workspace/.venv/bin/python3 -c "\
-import os; \
-import sys; \
-os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'; \
-sys.path.insert(0, '/workspace'); \
-from indextts.utils.front import TextNormalizer; \
-normalizer = TextNormalizer(); \
-normalizer.load(); \
-print('>> WeText FSTs pre-built successfully'); \
-" || echo "FST pre-build skipped (will build on first use)"
-
-# === PRE-COMPILE BigVGAN CUDA (optional, but ensures it's ready) ===
-# Note: CUDA kernels are disabled in handler.py (use_cuda_kernel=False) for faster cold starts,
-# but we still ensure the module can be imported without errors
-RUN echo ">> Pre-compiling BigVGAN module..." && \
-    python3 -c "\
-import sys; \
-sys.path.insert(0, '/workspace'); \
-import indextts.s2mel.modules.bigvgan; \
-print('>> BigVGAN module pre-compiled successfully'); \
-" || echo "BigVGAN pre-compile skipped"
-
-# === NOTE: CUDA kernels disabled for faster cold starts ===
-# BigVGAN CUDA kernels are disabled (use_cuda_kernel=False) to eliminate
-# 1+ minute compilation time. PyTorch fallback is still real-time (<0.2s).
-# This reduces cold start from 6min to 10-20 seconds with minimal performance impact.
+# Create cache directories
+RUN mkdir -p /workspace/cache/{transformers,torch,huggingface}
 
 # Make entrypoint script executable
-COPY entrypoint.sh /workspace/entrypoint.sh
 RUN chmod +x /workspace/entrypoint.sh
 
 # Set up environment for uv
@@ -149,8 +191,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD python3 -c "import sys; sys.exit(0)"
 
-# Use entrypoint script which handles model download if needed
-# PATH includes .venv/bin, so python3 will use the uv-managed environment
-# PYTHONPATH is set to include /workspace for module discovery
+# Use entrypoint script
 ENTRYPOINT ["/workspace/entrypoint.sh"]
-

@@ -38,10 +38,12 @@ RUN pip3 install -U uv
 WORKDIR /workspace
 
 # === LAYER 1: Copy dependency files first (for better caching) ===
-COPY pyproject.toml uv.lock ./
+# Copy pyproject.toml (uv.lock will be copied with the rest of the code later)
+COPY pyproject.toml ./
 
 # Install main project dependencies using uv (includes runpod from pyproject.toml)
 # This layer is cached separately from code changes
+# Note: uv.lock will be available after COPY . below, but uv sync works without it
 RUN uv sync --all-extras --default-index "https://pypi.org/simple"
 
 # Install model download tools
